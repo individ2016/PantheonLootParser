@@ -174,7 +174,7 @@ namespace PantheonLootParser
 			{
 				Dictionary<String, String> replacements = new Dictionary<String, String>();
 				foreach(ListViewItem item in lvReplacements.Items)
-					replacements.Add(item.Text, item.SubItems[0].Text);
+					replacements.Add(item.Text, item.SubItems[1].Text);
 				itemsDescription = TextUtils.MakeReplacements(itemsDescription, replacements);
 
 				if(rbSendToChat.Checked)
@@ -184,7 +184,7 @@ namespace PantheonLootParser
 				SystemSounds.Hand.Play();
 			} else
 			{
-				Clipboard.SetText("");
+				Clipboard.Clear();
 				SystemSounds.Exclamation.Play();
 			}
 		}
