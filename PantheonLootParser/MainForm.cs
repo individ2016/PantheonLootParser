@@ -13,7 +13,7 @@ namespace PantheonLootParser
 		private String settingsPath = Environment.ExpandEnvironmentVariables(@"%AppData%\..\LocalLow\Visionary Realms\Pantheon\Settings\CharacterSettings");
 		private ChatWindowSettings chatWindowSettings;
 		private Utils utils = new Utils();
-		private ShalazamParser parser;
+		private Parser parser;
 
 		[DllImport("user32.dll")]
 		private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
@@ -36,11 +36,11 @@ namespace PantheonLootParser
 				MessageBox.Show("Cant register hot-key. Try restart.");
 
 			_DAL.EnsureDBCreated();
-			parser = new ShalazamParser(_DAL);
+			parser = new Parser(_DAL);
 
 			FillCharacters();
 			txtChatPrefix.Text = _DAL.GetSettings(UserSettingsEnum.ChatPrefix);
-			txtAttributeSplitter.Text = _DAL.GetSettings(UserSettingsEnum.AttributeSplitter);
+			txtAttributeSplitter.Text = parser.AttributeSplitter = _DAL.GetSettings(UserSettingsEnum.AttributeSplitter);
 			txtItemSplitter.Text = _DAL.GetSettings(UserSettingsEnum.ItemSplitter);
 			String? resultAction = _DAL.GetSettings(UserSettingsEnum.ResultAction);
 			if(resultAction == "0")
@@ -174,7 +174,7 @@ namespace PantheonLootParser
 			{
 				Dictionary<String, String> replacements = new Dictionary<String, String>();
 				foreach(ListViewItem item in lvReplacements.Items)
-					replacements.Add(item.Name, item.SubItems[0].Text);
+					replacements.Add(item.Text, item.SubItems[0].Text);
 				itemsDescription = TextUtils.MakeReplacements(itemsDescription, replacements);
 
 				if(rbSendToChat.Checked)
@@ -300,6 +300,7 @@ namespace PantheonLootParser
 		private async void txtAttributeSplitter_TextChanged(object sender, EventArgs e)
 		{
 			await _DAL.UpdateSettings(UserSettingsEnum.AttributeSplitter, txtAttributeSplitter.Text);
+			parser.AttributeSplitter = txtAttributeSplitter.Text;
 		}
 	}
 }

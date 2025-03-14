@@ -39,6 +39,7 @@ namespace PantheonLootParser
 						ItemId INTEGER NOT NULL,
 						AttributeName TEXT NOT NULL,
 						AttributeValue TEXT NULL,
+						Sort INTEGER NOT NULL,
 						PRIMARY KEY (ItemId, AttributeName, AttributeValue)
 					);";
 					await command.ExecuteNonQueryAsync();
@@ -176,32 +177,34 @@ namespace PantheonLootParser
 			}
 		}
 
-		public async Task AddAttributeItem(Int32 itemId, String attributeName)
+		public async Task AddAttributeItem(Int32 itemId, String attributeName, Int32 sortIndex)
 		{
 			using(var connection = new SqliteConnection(ConnectionString))
 			{
 				connection.Open();
 				using(var command = connection.CreateCommand())
 				{
-					command.CommandText = @$"INSERT INTO ItemAttributes (ItemId, AttributeName) VALUES (@itemId, @attributeName);";
+					command.CommandText = @$"INSERT INTO ItemAttributes (ItemId, AttributeName, Sort) VALUES (@itemId, @attributeName, @sortIndex);";
 					command.Parameters.AddWithValue("itemId", itemId);
 					command.Parameters.AddWithValue("attributeName", attributeName);
+					command.Parameters.AddWithValue("sortIndex", sortIndex);
 					await command.ExecuteNonQueryAsync();
 				}
 			}
 		}
 
-		public async Task AddAttributeItem(Int32 itemId, String attributeName, String attributeValue)
+		public async Task AddAttributeItem(Int32 itemId, String attributeName, String attributeValue, Int32 sortIndex)
 		{
 			using(var connection = new SqliteConnection(ConnectionString))
 			{
 				connection.Open();
 				using(var command = connection.CreateCommand())
 				{
-					command.CommandText = @$"INSERT INTO ItemAttributes (ItemId, AttributeName, AttributeValue) VALUES (@itemId, @attributeName, @attributeValue);";
+					command.CommandText = @$"INSERT INTO ItemAttributes (ItemId, AttributeName, AttributeValue, Sort) VALUES (@itemId, @attributeName, @attributeValue, @sortIndex);";
 					command.Parameters.AddWithValue("itemId", itemId);
 					command.Parameters.AddWithValue("attributeName", attributeName);
 					command.Parameters.AddWithValue("attributeValue", attributeValue);
+					command.Parameters.AddWithValue("sortIndex", sortIndex);
 					await command.ExecuteNonQueryAsync();
 				}
 			}
@@ -231,7 +234,7 @@ namespace PantheonLootParser
 				connection.Open();
 				using(var command = connection.CreateCommand())
 				{
-					command.CommandText = @$"SELECT AttributeName, AttributeValue FROM ItemAttributes WHERE ItemId=@itemId";
+					command.CommandText = @$"SELECT AttributeName, AttributeValue FROM ItemAttributes WHERE ItemId=@itemId ORDER BY Sort";
 					command.Parameters.AddWithValue("itemId", itemId);
 					SqliteDataReader reader = await command.ExecuteReaderAsync();
 					while(await reader.ReadAsync())

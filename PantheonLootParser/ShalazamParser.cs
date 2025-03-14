@@ -2,7 +2,7 @@
 
 namespace PantheonLootParser
 {
-	public class ShalazamParser
+	public class Parser
 	{
 		private TimeSpan dbCacheSpan = TimeSpan.FromDays(7);
 		private DAL _DAL;
@@ -10,7 +10,7 @@ namespace PantheonLootParser
 		public String AttributeSplitter { get; set; }
 		
 
-		internal ShalazamParser(DAL dal)
+		internal Parser(DAL dal)
 		{
 			_DAL = dal;
 		}
@@ -68,6 +68,7 @@ namespace PantheonLootParser
 			else
 				await _DAL.RemoveItem(item.ID);
 
+			
 			using(HttpClient client = new HttpClient())
 			{
 				String page = await client.GetStringAsync($"https://shalazam.info/items/{item.ID}/compare");
@@ -77,6 +78,7 @@ namespace PantheonLootParser
 				var tableElement = doc.DocumentNode.SelectSingleNode("//table[@class='item-comparison']");
 				if(tableElement != null)
 				{
+					Int32 sortIndex = 0;
 					foreach(var row in tableElement.SelectNodes(".//tr[not(@aria-hidden)]"))
 					{
 						HtmlNode leftNode = row.SelectSingleNode(".//div[@class='level-left']");
@@ -84,9 +86,10 @@ namespace PantheonLootParser
 						{
 							HtmlNode rightNode = row.SelectSingleNode(".//div[@class='level-right']");
 							if(rightNode != null)
-								_DAL.AddAttributeItem(item.ID, leftNode.InnerText.Trim(), rightNode.InnerText.Trim());
+								_DAL.AddAttributeItem(item.ID, leftNode.InnerText.Trim(), rightNode.InnerText.Trim(), sortIndex);
 						} else
-							_DAL.AddAttributeItem(item.ID, row.InnerText.Trim());
+							_DAL.AddAttributeItem(item.ID, row.InnerText.Trim(), sortIndex);
+						sortIndex++;
 					}
 					_DAL.AddItem(item.ID, item.Name);
 					return await FormatDBItem(item);
