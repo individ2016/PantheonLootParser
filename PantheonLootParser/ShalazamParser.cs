@@ -7,16 +7,12 @@ namespace PantheonLootParser
 		private TimeSpan dbCacheSpan = TimeSpan.FromDays(7);
 		private DAL _DAL;
 		private List<DataItem> _items;
+		public String AttributeSplitter { get; set; }
+		
 
-		private Dictionary<String, String> _autoReplacements = new Dictionary<String, String>()
+		internal ShalazamParser(DAL dal)
 		{
-			{ "&centerdot;", "·" },
-		};
-
-		public ShalazamParser()
-		{
-			_DAL = new DAL();
-			_DAL.EnsureDBCreated();
+			_DAL = dal;
 		}
 
 		protected async Task EnsureItemsList()
@@ -47,19 +43,19 @@ namespace PantheonLootParser
 			}
 		}
 
-		public async Task<String> GetItemFromDB(DataItem item)
+		public async Task<String> FormatDBItem(DataItem item)
 		{
 			String result = String.Empty;
 			await foreach(var attributeItem in _DAL.GetItemAttributes(item.ID))
 			{
 				if(!String.IsNullOrEmpty(result))
-					result += "\\n";
+					result += this.AttributeSplitter;
 				if(attributeItem.Value != null)
 					result += $"{attributeItem.Key}: {attributeItem.Value}";
 				else
 					result += attributeItem.Key;
 			}
-			return MakeAutoReplacements(result);
+			return result;
 		}
 
 		public async Task<String> GetItem(DataItem item)
@@ -68,9 +64,9 @@ namespace PantheonLootParser
 
 			DataItem dbItem = await _DAL.GetItem(item.ID);
 			if(dbItem?.InsDate?.Add(dbCacheSpan) > DateTime.Now)
-				return await GetItemFromDB(dbItem);
+				return await FormatDBItem(dbItem);
 			else
-				_DAL.RemoveItem(item.ID);
+				await _DAL.RemoveItem(item.ID);
 
 			using(HttpClient client = new HttpClient())
 			{
@@ -93,18 +89,10 @@ namespace PantheonLootParser
 							_DAL.AddAttributeItem(item.ID, row.InnerText.Trim());
 					}
 					_DAL.AddItem(item.ID, item.Name);
-					return await GetItemFromDB(item);
+					return await FormatDBItem(item);
 				}
 			}
 			return String.Empty;
-		}
-
-		private String MakeAutoReplacements(String input)
-		{
-			foreach(String key in _autoReplacements.Keys)
-				if (input.Contains(key))
-					input = input.Replace(key, _autoReplacements[key]);
-			return input;
 		}
 
 		public async Task<DataItem> GetItem(String itemTitle)

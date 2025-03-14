@@ -2,16 +2,18 @@ using Emgu.CV;
 using System.Media;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Linq;
 using System.Text.Json.Serialization;
 
 namespace PantheonLootParser
 {
 	public partial class MainForm : Form
 	{
+		private DAL _DAL = new DAL();
 		private String settingsPath = Environment.ExpandEnvironmentVariables(@"%AppData%\..\LocalLow\Visionary Realms\Pantheon\Settings\CharacterSettings");
 		private ChatWindowSettings chatWindowSettings;
 		private Utils utils = new Utils();
-		private ShalazamParser parser = new ShalazamParser();
+		private ShalazamParser parser;
 
 		[DllImport("user32.dll")]
 		private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
@@ -31,21 +33,77 @@ namespace PantheonLootParser
 
 			// Регистрация горячей клавиши Ctrl+Shift+S
 			if(!RegisterHotKey(this.Handle, hotkeyId, MOD_CONTROL | MOD_SHIFT, (uint)Keys.V))
-				MessageBox.Show("Не удалось зарегистрировать горячую клавишу");
+				MessageBox.Show("Cant register hot-key. Try restart.");
 
-			for(Int32 index = 0; index < clbFilters.Items.Count; index++)
-				clbFilters.SetItemChecked(index, true);
+			_DAL.EnsureDBCreated();
+			parser = new ShalazamParser(_DAL);
 
 			FillCharacters();
+			txtChatPrefix.Text = _DAL.GetSettings(UserSettingsEnum.ChatPrefix);
+			txtAttributeSplitter.Text = _DAL.GetSettings(UserSettingsEnum.AttributeSplitter);
+			txtItemSplitter.Text = _DAL.GetSettings(UserSettingsEnum.ItemSplitter);
+			String? resultAction = _DAL.GetSettings(UserSettingsEnum.ResultAction);
+			if(resultAction == "0")
+				rbSendToChat.Checked = true;
+			else
+				rbClipboardCopy.Checked = true;
+			FillSkipItems();
+			FillReplacements();
+
+			clbFilters.ItemCheck += clbFilters_ItemCheck;
+			rbClipboardCopy.CheckedChanged += rbClipboardCopy_CheckedChanged;
+			cbCharacterList.SelectedIndexChanged += cbCharacterList_SelectedIndexChanged;
+		}
+
+		private async void cbCharacterList_SelectedIndexChanged(object sender, EventArgs e)
+		{
+			if(cbCharacterList.SelectedIndex > -1)
+				await _DAL.UpdateSettings(UserSettingsEnum.LastCharacter, (String)cbCharacterList.Items[cbCharacterList.SelectedIndex]);
+		}
+
+		private void rbClipboardCopy_CheckedChanged(object sender, EventArgs e)
+		{
+			if(rbSendToChat.Checked)
+				_DAL.UpdateSettings(UserSettingsEnum.ResultAction, "0");
+			else
+				_DAL.UpdateSettings(UserSettingsEnum.ResultAction, "1");
+		}
+
+		private async void FillSkipItems()
+		{
+			await foreach(var item in _DAL.GetSkipItems())
+				clbFilters.Items.Add(item.Key, item.Value);
+		}
+
+		private async void FillReplacements()
+		{
+			await foreach(var item in _DAL.GetReplacements())
+			{
+				ListViewItem lvItem = new ListViewItem();
+				lvItem.Text = item.Key;
+				lvItem.SubItems.Add(item.Value);
+				lvReplacements.Items.Add(lvItem);
+			}
 		}
 
 		private void FillCharacters()
 		{
-			foreach(var characterName in Directory.EnumerateDirectories(settingsPath))
+			String? lastChar = _DAL.GetSettings(UserSettingsEnum.LastCharacter);
+			Int32 lastIndex = 0;
+			Int32 selIndex = -1;
+			foreach(var characterDirName in Directory.EnumerateDirectories(settingsPath))
 			{
-				cbCharacterList.Items.Add(Path.GetFileName(characterName));
+				var characterName = Path.GetFileName(characterDirName);
+				cbCharacterList.Items.Add(characterName);
+				lastIndex++;
+				if(lastChar == characterName)
+					selIndex = lastIndex;
 			}
-			cbCharacterList.SelectedIndex = cbCharacterList.Items.Count - 1;
+
+			if(selIndex != -1)
+				cbCharacterList.SelectedIndex = selIndex;
+			else
+				cbCharacterList.SelectedIndex = lastIndex;
 		}
 
 		protected override void WndProc(ref Message m)
@@ -54,15 +112,17 @@ namespace PantheonLootParser
 			{
 				if(m.WParam.ToInt32() == hotkeyId)
 				{
-					if (cbCharacterList.SelectedIndex == 0)
+					if(cbCharacterList.SelectedIndex == 0)
 					{
 						MessageBox.Show("Укажите персонажа. Это нужно для получения настроек месторасположения окна чата.", "Предупреждение", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 						return;
 					}
 
 					Mat mat = utils.GetPantheonScreen();
-					if (mat != null)
+					if(mat != null)
 						RecognizeLoot(mat);
+					else
+						SystemSounds.Exclamation.Play();
 				}
 			}
 
@@ -85,7 +145,7 @@ namespace PantheonLootParser
 			foreach(String lootItem in lootItems)
 			{
 				DataItem item = await parser.GetItem(lootItem);
-				if (item != null && !shalazamItems.Any(p => p.ID == item.ID))
+				if(item != null && !shalazamItems.Any(p => p.ID == item.ID))
 					shalazamItems.Add(item);
 			}
 
@@ -105,18 +165,28 @@ namespace PantheonLootParser
 					continue;
 
 				if(!String.IsNullOrWhiteSpace(itemsDescription))
-					itemsDescription += "\\n|---===---|\\n";
+					itemsDescription += txtItemSplitter.Text;
 
 				itemsDescription += lootItemDescription;
 			}
+
 			if(!String.IsNullOrWhiteSpace(itemsDescription))
 			{
+				Dictionary<String, String> replacements = new Dictionary<String, String>();
+				foreach(ListViewItem item in lvReplacements.Items)
+					replacements.Add(item.Name, item.SubItems[0].Text);
+				itemsDescription = TextUtils.MakeReplacements(itemsDescription, replacements);
+
 				if(rbSendToChat.Checked)
 					SendTextToChat(itemsDescription);
 				else if(rbClipboardCopy.Checked)
 					Clipboard.SetText(txtChatPrefix.Text + itemsDescription);
+				SystemSounds.Hand.Play();
+			} else
+			{
+				Clipboard.SetText("");
+				SystemSounds.Exclamation.Play();
 			}
-			SystemSounds.Hand.Play();
 		}
 
 		private void SendTextToChat(String text)
@@ -127,7 +197,7 @@ namespace PantheonLootParser
 			SendKeys.SendWait("~");
 		}
 
-		private async void cbCharacterList_SelectedValueChanged(object sender, EventArgs e)
+		private void cbCharacterList_SelectedValueChanged(object sender, EventArgs e)
 		{
 			if(cbCharacterList.SelectedIndex == 0)
 				return;
@@ -142,11 +212,6 @@ namespace PantheonLootParser
 			}
 		}
 
-		private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
-		{
-
-		}
-
 		private void button1_Click(object sender, EventArgs e)
 		{
 			OpenFileDialog fileDialog = new OpenFileDialog();
@@ -159,9 +224,82 @@ namespace PantheonLootParser
 			}
 		}
 
-		private async void button2_Click(object sender, EventArgs e)
+		private async void btnAddSkipItem_Click(object sender, EventArgs e)
 		{
-			String lootItemDescription = await parser.GetItem(new DataItem { ID = 630, Name = "A fresh-baked cookie" });
+			if(String.IsNullOrWhiteSpace(txtAddSkipText.Text))
+			{
+				MessageBox.Show("Type text to skip");
+				return;
+			}
+
+			await _DAL.AddSkipItem(txtAddSkipText.Text);
+			clbFilters.Items.Add(txtAddSkipText.Text, true);
+			txtAddSkipText.Text = String.Empty;
+		}
+
+		private async void clbFilters_ItemCheck(object sender, ItemCheckEventArgs e)
+		{
+			await _DAL.UpdateSkipItem((String)clbFilters.Items[e.Index], e.NewValue == CheckState.Checked);
+		}
+
+		private async void btnRemoveSkipItem_Click(object sender, EventArgs e)
+		{
+			if(clbFilters.SelectedIndex == -1)
+			{
+				MessageBox.Show("Select item to delete");
+				return;
+			}
+
+			await _DAL.RemoveSkipItem((String)clbFilters.Items[clbFilters.SelectedIndex]);
+			clbFilters.Items.RemoveAt(clbFilters.SelectedIndex);
+		}
+
+		private async void btnAddReplacement_Click(object sender, EventArgs e)
+		{
+			if(String.IsNullOrWhiteSpace(txtSearch.Text))
+			{
+				MessageBox.Show("Type text to search in description");
+				return;
+			}
+
+			if(String.IsNullOrWhiteSpace(txtReplace.Text))
+			{
+				MessageBox.Show("Type text to replace when search text found in description");
+				return;
+			}
+
+			await _DAL.AddReplacement(txtSearch.Text, txtReplace.Text);
+			ListViewItem lvItem = new ListViewItem();
+			lvItem.Text = txtSearch.Text;
+			lvItem.SubItems.Add(txtReplace.Text);
+			lvReplacements.Items.Add(lvItem);
+			txtSearch.Text = txtReplace.Text = String.Empty;
+		}
+
+		private async void btnRemoveReplacement_Click(object sender, EventArgs e)
+		{
+			if(lvReplacements.SelectedItems.Count == 0)
+			{
+				MessageBox.Show("Select item to delete");
+				return;
+			}
+			await _DAL.RemoveReplacement(lvReplacements.SelectedItems[0].Text);
+			lvReplacements.Items.RemoveAt(lvReplacements.SelectedIndices[0]);
+		}
+
+		private async void txtChatPrefix_TextChanged(object sender, EventArgs e)
+		{
+			await _DAL.UpdateSettings(UserSettingsEnum.ChatPrefix, txtChatPrefix.Text);
+		}
+
+		private async void txtItemSplitter_TextChanged(object sender, EventArgs e)
+		{
+			await _DAL.UpdateSettings(UserSettingsEnum.ItemSplitter, txtItemSplitter.Text);
+		}
+
+		private async void txtAttributeSplitter_TextChanged(object sender, EventArgs e)
+		{
+			await _DAL.UpdateSettings(UserSettingsEnum.AttributeSplitter, txtAttributeSplitter.Text);
 		}
 	}
 }

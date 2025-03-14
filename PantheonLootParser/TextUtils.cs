@@ -24,6 +24,14 @@ namespace PantheonLootParser
 			return String.Join(" ", words);
 		}
 
+		public static String MakeReplacements(String input, Dictionary<String, String> replacements)
+		{
+			foreach(String key in replacements.Keys)
+				if(input.Contains(key))
+					input = input.Replace(key, replacements[key]);
+			return input;
+		}
+
 		public static String[] FindByLootPatterns(String inputString)
 		{
 			inputString = String.Join(' ', inputString.Split(new String[] { " ", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries));
