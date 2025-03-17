@@ -6,7 +6,7 @@ To make things work:
 2. Select your character if it is not selected (program needs to get in-game chat window position settings)
 3. Start Pantheon: Rise of the fallen game
 4. Press Ctrl + Shift + V on your keyboard when you or groupmates loot something and you want to recognize items from chat.
-5. When all jobs will be done you will listen sound, so you know that information can be pasted to chat.
+5. When all jobs will be done you will hear sound, so you know that information can be pasted to chat.
 
 There is mode, when program will type information in group chat, but it will works only if the cursor not in the chat-window when you pressing hot-key.
 
